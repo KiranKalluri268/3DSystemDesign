@@ -6,6 +6,7 @@ export interface ValidationIssue {
   code:
     | 'no_client'
     | 'multiple_clients'
+    | 'client_not_connected'
     | 'dangling_link'
     | 'self_link'
     | 'duplicate_link'
@@ -98,6 +99,17 @@ export function validateTopology(topology: Topology): ValidationIssue[] {
 
   const client = clients[0];
   if (client) {
+    // The engine treats "nothing downstream" as the end of a path, which is
+    // right for a component that served the request and wrong for a client
+    // that never sent it anywhere — that would score a perfect run against an
+    // empty design. Refuse it here rather than special-casing it mid-run.
+    if (!topology.links.some((l) => l.from === client.id)) {
+      issues.push({
+        code: 'client_not_connected',
+        message: 'Traffic has nowhere to go. Connect the client to your system.',
+        nodeId: client.id,
+      });
+    }
     issues.push(...findUnreachable(topology, client.id));
     issues.push(...findCycle(topology, client.id));
   }

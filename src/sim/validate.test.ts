@@ -40,6 +40,13 @@ describe('validateTopology', () => {
     expect(codes(topology([node('api', 'api_server')]))).toContain('no_client');
   });
 
+  it('rejects a client wired to nothing', () => {
+    // The engine ends a path at any component with nothing downstream, so an
+    // unwired client would otherwise complete every request instantly and
+    // score an empty design as perfect.
+    expect(codes(topology([node('c', 'client')]))).toContain('client_not_connected');
+  });
+
   it('rejects a second client', () => {
     const t = healthy();
     t.nodes.push(node('c2', 'client'));
