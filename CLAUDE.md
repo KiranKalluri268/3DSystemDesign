@@ -65,11 +65,15 @@ go.
 
 ## Branches and commits
 
-- The harness assigns a designated branch for a session and work goes there.
-  When naming a branch yourself, use a conventional prefix that says what the
-  work is: `feat/`, `fix/`, `sim/`, `docs/`, `chore/`.
+- **Never put `claude` in a branch name.** Use a conventional prefix that says
+  what the work is: `feat/`, `fix/`, `sim/`, `docs/`, `chore/`. If the harness
+  hands this session a `claude/*` branch, rename it before pushing rather than
+  working on it.
+- Commits are authored as the repo owner, with no `Co-Authored-By` or
+  `Claude-Session` trailers. Nothing in the history advertises the tooling.
 - One commit per meaningful change, not one commit at the end. A branch that
-  fixes three things should read as three commits.
+  fixes three things should read as three commits, and each one should build
+  and pass tests on its own.
 - Write the commit message about the problem, not the patch. What was wrong,
   why it was wrong, and what the fix rests on. If a number was measured, put
   the number in — "p99 was 4.2s at 3k rps, now 280ms" beats "improved
