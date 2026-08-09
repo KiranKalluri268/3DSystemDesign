@@ -36,6 +36,12 @@ export interface NodeSpec {
   baseLatencyMs: number;
   /** Dollars per hour per instance, for the budget scoring. */
   costPerHour: number;
+  /**
+   * Fraction of requests this node answers itself instead of forwarding
+   * downstream — a cache or CDN hit. Absent means every request served here
+   * continues to the next node.
+   */
+  hitRatio?: number;
   /** Kinds this node is allowed to send traffic to. */
   canConnectTo: NodeKind[];
 }
