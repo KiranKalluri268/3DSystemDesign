@@ -80,8 +80,18 @@ depend on the player's refresh rate. Each tick:
    (counted as an error).
 4. Record completions into a latency histogram.
 
+Past the offered window the loop keeps stepping until the system drains, so a
+request that was merely in flight when the clock stopped is not scored as a
+failure; anything that cannot finish within `REQUEST_TIMEOUT_MS` times out.
+
 Rendering interpolates between ticks for smooth packet motion. The sim is the
 source of truth; the animation is a view of it.
+
+Two rules the engine relies on, both enforced elsewhere so the hot loop does
+not have to re-check them: `validateTopology` guarantees a single client and
+an acyclic graph, and a component with nothing downstream answers the request
+itself — an API server with no database is a real design, so the only shape
+that would score nonsensically, an unwired client, is refused up front.
 
 ## 5. Component roster (v1)
 
@@ -123,8 +133,8 @@ touching engine or renderer code.
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 | Scaffold: Vite + TS + R3F, isometric board, CI, this doc | **done** |
-| 1 | Headless sim engine + metrics, unit tested | next |
-| 2 | Place / drag / delete components, snap to grid | |
+| 1 | Headless sim engine + metrics, unit tested | **done** |
+| 2 | Place / drag / delete components, snap to grid | next |
 | 3 | Wiring: click-to-connect, validation, link rendering | |
 | 4 | Run mode: animated packets, live HUD, pass/fail | |
 | 5 | Levels 1–3 with briefs and objectives | |
