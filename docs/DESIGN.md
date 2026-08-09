@@ -47,6 +47,11 @@ Three concrete jobs the third dimension does that a 2D diagram cannot:
 If a feature does not use one of these three, it belongs in the HUD, not the
 scene.
 
+Text is one thing the scene does **not** do. Labels are DOM elements
+positioned over the canvas, not 3D text: drei's `<Text>` fetches a font from
+a CDN at runtime and throws inside the render loop when that fails, blanking
+the whole board. Nothing in the scene may depend on a network request.
+
 ## 4. Architecture
 
 ```
@@ -134,8 +139,8 @@ touching engine or renderer code.
 |---|---|---|
 | 0 | Scaffold: Vite + TS + R3F, isometric board, CI, this doc | **done** |
 | 1 | Headless sim engine + metrics, unit tested | **done** |
-| 2 | Place / drag / delete components, snap to grid | next |
-| 3 | Wiring: click-to-connect, validation, link rendering | |
+| 2 | Place / drag / delete components, snap to grid | **done** |
+| 3 | Wiring: click-to-connect, validation, link rendering | next |
 | 4 | Run mode: animated packets, live HUD, pass/fail | |
 | 5 | Levels 1–3 with briefs and objectives | |
 | 6 | Progression: budget, stars, "why you failed" explainers | |
