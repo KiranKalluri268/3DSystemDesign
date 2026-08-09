@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useBoard } from './store';
 import { MAX_REPLICAS } from './topology';
+import type { NodeKind } from '../sim/types';
 
 const cell = (x: number, z: number) => ({ x, z, y: 0 });
 const state = () => useBoard.getState();
 
 /** Arm a kind and drop it, returning the new node's id. */
-function drop(x: number, z: number, kind = 'api_server' as const): string {
+function drop(x: number, z: number, kind: NodeKind = 'api_server'): string {
   state().armKind(kind);
   state().placeAt(cell(x, z));
   return state().selectedId!;

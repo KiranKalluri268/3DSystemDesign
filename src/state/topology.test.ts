@@ -11,11 +11,11 @@ import {
   withinBoard,
 } from './topology';
 import { GRID_SIZE } from '../sim/constants';
-import type { Topology } from '../sim/types';
+import type { NodeKind, Topology } from '../sim/types';
 
 const cell = (x: number, z: number) => ({ x, z, y: 0 });
 
-function place(topology: Topology, x: number, z: number, kind = 'api_server' as const) {
+function place(topology: Topology, x: number, z: number, kind: NodeKind = 'api_server') {
   return placeNode(topology, kind, cell(x, z), createIdFactory(`${x}-${z}-`));
 }
 
