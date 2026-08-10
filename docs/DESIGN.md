@@ -214,7 +214,19 @@ progression to fit into.
 | 4 | Run mode: animated packets, live HUD, pass/fail | **done** |
 | 5 | Levels 1–2 with briefs and objectives; level 3 blocked on engine work | **done** |
 | 6 | Progression: budget, stars, "why you failed" explainers | |
-| 7 | Polish, tutorial, GitHub Pages deploy | |
+| 7 | Polish, tutorial, GitHub Pages deploy | deploy done, out of order |
+
+Deploy landed ahead of the rest of phase 7 on request, once the game had
+something worth putting a URL in front of. `.github/workflows/deploy.yml`
+builds and re-runs the full CI gate (typecheck, lint, test) before
+publishing `dist/` — it does not trust a separate CI run on the same push,
+since GitHub Actions workflows don't share that state without extra
+plumbing. It fires on every push to `main`, plus `workflow_dispatch` for a
+manual run from the Actions tab.
+
+One step only a repo admin can do: **Settings → Pages → Source → GitHub
+Actions**, once, before the workflow's first run will actually publish
+anything.
 
 ## 8. Non-goals
 
