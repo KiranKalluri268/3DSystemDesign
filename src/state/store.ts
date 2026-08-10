@@ -38,6 +38,7 @@ export interface BoardState {
   scaleSelected: (delta: number) => void;
   setLinking: (on: boolean) => void;
   clickNodeForLink: (id: string) => void;
+  cancelLinkPick: () => void;
   selectLink: (id: string | null) => void;
   deleteSelectedLink: () => void;
   reset: () => void;
@@ -127,6 +128,9 @@ export const useBoard = create<BoardState>((set, get) => ({
     // A refused link (self/duplicate/illegal) leaves linkFrom as it was, so
     // the player can immediately try a different target without re-picking.
   },
+
+  /** Clicking the floor while linking: back out of the current pick, but stay in linking mode. */
+  cancelLinkPick: () => set({ linkFrom: null }),
 
   selectLink: (id) => set({ selectedLinkId: id, selectedId: null, armedKind: null }),
 

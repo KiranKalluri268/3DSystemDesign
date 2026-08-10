@@ -164,6 +164,15 @@ describe('linking', () => {
     expect(state().topology.links).toHaveLength(1);
   });
 
+  it('backs out of a pick without leaving linking mode', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    state().setLinking(true);
+    state().clickNodeForLink(lb);
+    state().cancelLinkPick();
+    expect(state().linkFrom).toBeNull();
+    expect(state().linking).toBe(true);
+  });
+
   it('turning linking off clears the pick', () => {
     const lb = drop(1, 1, 'load_balancer');
     state().setLinking(true);
