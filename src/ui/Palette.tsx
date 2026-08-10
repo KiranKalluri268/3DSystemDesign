@@ -1,14 +1,18 @@
 import { NODE_SPECS } from '../sim/specs';
 import { COMPONENT_COLORS } from '../scene/component-colors';
 import { useBoard } from '../state/store';
+import { useRun } from '../state/runStore';
 import type { NodeKind } from '../sim/types';
 
 /** Every kind for now; a level will hand its own allowed palette in phase 5. */
 const ALL_KINDS = Object.keys(NODE_SPECS) as NodeKind[];
 
 export function Palette() {
+  const editing = useRun((s) => s.status) === 'editing';
   const armedKind = useBoard((s) => s.armedKind);
   const armKind = useBoard((s) => s.armKind);
+
+  if (!editing) return null;
 
   return (
     <aside className="panel palette">

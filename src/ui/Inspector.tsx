@@ -1,6 +1,7 @@
 import { costPerHour, specFor } from '../sim/specs';
 import { MAX_REPLICAS, linksTouching } from '../state/topology';
 import { useBoard } from '../state/store';
+import { useRun } from '../state/runStore';
 
 /**
  * Details for the selection, and the controls that change it.
@@ -11,6 +12,7 @@ import { useBoard } from '../state/store';
  * asking is "is this tier big enough", not "what does one box do".
  */
 export function Inspector() {
+  const editing = useRun((s) => s.status) === 'editing';
   const topology = useBoard((s) => s.topology);
   const selectedId = useBoard((s) => s.selectedId);
   const selectedLinkId = useBoard((s) => s.selectedLinkId);
@@ -23,6 +25,8 @@ export function Inspector() {
   const linkFromNode = link ? topology.nodes.find((n) => n.id === link.from) : undefined;
   const linkToNode = link ? topology.nodes.find((n) => n.id === link.to) : undefined;
   const total = costPerHour(topology.nodes);
+
+  if (!editing) return null;
 
   return (
     <aside className="panel inspector">
