@@ -5,25 +5,26 @@ import { ModeBar } from './ui/ModeBar';
 import { RunBar } from './ui/RunBar';
 import { Hud } from './ui/Hud';
 import { VerdictBanner } from './ui/VerdictBanner';
+import { BriefPanel } from './ui/BriefPanel';
+import { LevelSelect } from './ui/LevelSelect';
 import { useKeyboardShortcuts } from './ui/useKeyboardShortcuts';
+import { useLevel } from './state/levelStore';
 
 export function App() {
   useKeyboardShortcuts();
+  const currentLevelId = useLevel((s) => s.currentLevelId);
+
+  if (!currentLevelId) return <LevelSelect />;
 
   return (
     <div className="app">
       <Board />
 
-      <header className="panel title">
-        <h1>Rack</h1>
-        <p className="hint">
-          Place components, wire them together, and run traffic through the
-          design to see how it holds up.
-        </p>
-      </header>
-
+      <div className="sidebar-left">
+        <BriefPanel />
+        <Palette />
+      </div>
       <ModeBar />
-      <Palette />
       <Inspector />
       <RunBar />
       <Hud />

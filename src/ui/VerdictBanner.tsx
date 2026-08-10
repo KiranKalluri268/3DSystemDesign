@@ -1,4 +1,5 @@
 import { useRun } from '../state/runStore';
+import { formatObjectiveValue } from './format';
 
 /**
  * The moment a run resolves into pass or fail.
@@ -25,7 +26,8 @@ export function VerdictBanner() {
             <div key={o.key}>
               <dt>{o.label}</dt>
               <dd className={o.passed ? 'ok' : 'bad'}>
-                {formatValue(o.key, o.actual)} (target {formatValue(o.key, o.target)})
+                {formatObjectiveValue(o.key, o.actual)} (target{' '}
+                {formatObjectiveValue(o.key, o.target)})
               </dd>
             </div>
           ))}
@@ -33,11 +35,4 @@ export function VerdictBanner() {
       )}
     </div>
   );
-}
-
-function formatValue(key: string, value: number): string {
-  if (key === 'maxErrorRate') return `${(value * 100).toFixed(1)}%`;
-  if (key === 'maxCostPerHour') return `$${value.toFixed(2)}/hr`;
-  if (key === 'minThroughputRps') return `${Math.round(value)} req/s`;
-  return `${Math.round(value)}ms`;
 }

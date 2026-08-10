@@ -1,5 +1,7 @@
 import { useBoard } from '../state/store';
 import { useRun } from '../state/runStore';
+import { useLevel } from '../state/levelStore';
+import { getLevel } from '../levels';
 import { TICK_MS } from '../sim/constants';
 
 const SPEEDS = [1, 2, 4, 8];
@@ -21,14 +23,17 @@ export function RunBar() {
   const setSpeed = useRun((s) => s.setSpeed);
   const resetRun = useRun((s) => s.reset);
   const topology = useBoard((s) => s.topology);
+  const currentLevelId = useLevel((s) => s.currentLevelId);
 
   const startRun = () => {
+    const level = currentLevelId ? getLevel(currentLevelId) : undefined;
+    if (!level) return; // No level chosen -- RunBar shouldn't be reachable without one.
     const board = useBoard.getState();
     board.armKind(null);
     board.select(null);
     board.selectLink(null);
     board.setLinking(false);
-    useRun.getState().start(topology);
+    useRun.getState().start(topology, level);
   };
 
   if (status === 'editing') {
