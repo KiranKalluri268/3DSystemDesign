@@ -36,6 +36,17 @@ npm run dev
 
 Other scripts: `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
 
+## Deployment
+
+Pushes to `main` build and deploy automatically to GitHub Pages via
+`.github/workflows/deploy.yml`, which re-runs the full CI gate (typecheck,
+lint, test) before publishing — nothing broken ships. Trigger a deploy by
+hand from the Actions tab (`workflow_dispatch`) if you need one outside a
+push.
+
+`vite.config.ts`'s `base` is already set for this repo's project-page URL;
+override it with `BASE_PATH=/` only if deploying to a root domain instead.
+
 ## Layout
 
 | Path | What lives there |
