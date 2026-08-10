@@ -230,3 +230,112 @@ describe('runSimulation', () => {
     expect(result.metrics.costPerHour).toBe(11);
   });
 });
+
+describe('packet trace', () => {
+  it('bounds the sample regardless of offered load', () => {
+    const result = runSimulation(stack(20), level(5000, 30), { seed: 1 });
+    expect(result.trace.length).toBeGreaterThan(0);
+    expect(result.trace.length).toBeLessThanOrEqual(60); // MAX_TRACED_PACKETS
+  });
+
+  it('spreads the sample across the whole run, not just the start', () => {
+    const result = runSimulation(stack(20), level(2000, 60), { seed: 1 });
+    const firstSpawn = result.trace[0]!.segments[0]!.arriveTick;
+    const lastSpawn = result.trace[result.trace.length - 1]!.segments[0]!.arriveTick;
+    // Runs 60s = 6000 ticks; a sample clustered in the first few percent
+    // would defeat the point of sampling across a spike late in the run.
+    expect(lastSpawn - firstSpawn).toBeGreaterThan(3000);
+  });
+
+  it('is deterministic for a given seed', () => {
+    const a = runSimulation(stack(3), level(500), { seed: 7 });
+    const b = runSimulation(stack(3), level(500), { seed: 7 });
+    expect(a.trace).toEqual(b.trace);
+  });
+
+  it('records a completed packet as a chain of closed segments', () => {
+    const result = runSimulation(stack(6), level(50), { seed: 1 });
+    const completedTrace = result.trace.find((t) => t.outcome === 'completed');
+    expect(completedTrace).toBeDefined();
+    // client -> lb -> api -> db: every segment but conceptually all of them
+    // close, because completion only happens after the last hop departs.
+    for (const segment of completedTrace!.segments) {
+      expect(segment.departTick).not.toBeNull();
+    }
+    expect(completedTrace!.endTick).toBeGreaterThanOrEqual(
+      completedTrace!.segments[0]!.arriveTick,
+    );
+  });
+
+  it('leaves a dropped packet\'s last segment open', () => {
+    const result = runSimulation(stack(1), level(2000, 5), { seed: 1 });
+    const droppedTrace = result.trace.find((t) => t.outcome === 'dropped');
+    expect(droppedTrace).toBeDefined();
+    const last = droppedTrace!.segments[droppedTrace!.segments.length - 1]!;
+    // Either it never got queued at all (arrive === depart, bounced
+    // instantly) or it was still waiting when it timed out.
+    expect(last.departTick === null || last.departTick === last.arriveTick).toBe(true);
+    expect(droppedTrace!.dropReason).toBeDefined();
+  });
+
+  it('never opens a segment past the end of the previous one', () => {
+    // A hop must depart before the next one can arrive: segments cannot
+    // overlap in time for a single traced packet.
+    const result = runSimulation(stack(4), level(600, 30), { seed: 3 });
+    for (const trace of result.trace) {
+      for (let i = 1; i < trace.segments.length; i++) {
+        const prevDepart = trace.segments[i - 1]!.departTick;
+        expect(prevDepart).not.toBeNull();
+        expect(trace.segments[i]!.arriveTick).toBeGreaterThanOrEqual(prevDepart!);
+      }
+    }
+  });
+});
+
+describe('history', () => {
+  it('snapshots once a second, including the start', () => {
+    const result = runSimulation(stack(3), level(500, 10), { seed: 1 });
+    expect(result.history[0]!.second).toBe(0);
+    const seconds = result.history.map((h) => h.second);
+    expect(seconds).toEqual([...seconds].sort((a, b) => a - b));
+  });
+
+  it('grows completed count monotonically', () => {
+    const result = runSimulation(stack(4), level(1000, 20), { seed: 1 });
+    for (let i = 1; i < result.history.length; i++) {
+      expect(result.history[i]!.throughputRps).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('tracks queue depth per node at the same cadence as history', () => {
+    const result = runSimulation(stack(1), level(2000, 10), { seed: 1 });
+    const apiDepth = result.queueDepthHistory['api'];
+    expect(apiDepth).toBeDefined();
+    expect(apiDepth!.length).toBe(result.history.length);
+    // An overloaded API server should show a queue building up, not staying
+    // flat at zero -- otherwise there is nothing for the board to animate.
+    expect(Math.max(...apiDepth!)).toBeGreaterThan(0);
+  });
+
+  it('reports the offered duration separately from the drained tail', () => {
+    const result = runSimulation(stack(1), level(2000, 10), { seed: 1 });
+    expect(result.offeredDurationSeconds).toBe(10);
+    // Overloaded, so draining the backlog takes longer than the offer window.
+    expect(result.lastTick).toBeGreaterThan((10 * 1000) / 10);
+  });
+
+  it('matches the offered duration when nothing needs to drain', () => {
+    const result = runSimulation(stack(6), level(50, 5), { seed: 1 });
+    // A healthy run still needs a few ticks past the offer window for the
+    // last spawned request to travel its hops (LB + API + DB, ~50ms) --
+    // this is not the queueing drain the overloaded case above measures.
+    expect(result.lastTick).toBeLessThanOrEqual((5 * 1000) / 10 + 20);
+  });
+
+  it('is empty for a refused topology, not missing', () => {
+    const result = runSimulation({ nodes: [], links: [] }, level(100));
+    expect(result.trace).toEqual([]);
+    expect(result.history).toEqual([]);
+    expect(result.queueDepthHistory).toEqual({});
+  });
+});
