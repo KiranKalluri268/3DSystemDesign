@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Html } from '@react-three/drei';
-import { COMPONENT_COLORS, SELECTED_COLOR } from './component-colors';
+import { COMPONENT_COLORS, LINK_PICK_COLOR, SELECTED_COLOR } from './component-colors';
 import { UNIT_HEIGHT, cellToWorld, stackHeight, stackTop } from './board-geometry';
 import { specFor } from '../sim/specs';
 import type { PlacedNode } from '../sim/types';
@@ -11,6 +11,8 @@ interface Props {
   node: PlacedNode;
   selected: boolean;
   dragging: boolean;
+  /** True while this node is the picked source of a connection being drawn. */
+  linkSource: boolean;
   onPointerDown: (event: { stopPropagation: () => void }) => void;
 }
 
@@ -21,7 +23,7 @@ interface Props {
  * this" without reading a number, which is the job the vertical axis is here
  * to do.
  */
-export function ComponentStack({ node, selected, dragging, onPointerDown }: Props) {
+export function ComponentStack({ node, selected, dragging, linkSource, onPointerDown }: Props) {
   const [x, , z] = cellToWorld(node.cell);
   const spec = specFor(node.kind);
   const color = COMPONENT_COLORS[node.kind];
@@ -29,6 +31,9 @@ export function ComponentStack({ node, selected, dragging, onPointerDown }: Prop
     () => Array.from({ length: node.replicas }, (_, i) => stackHeight(i)),
     [node.replicas],
   );
+  // Selection and "picked as a wire's source" are mutually exclusive in the
+  // store, but the ring colour still has to pick one if both were ever true.
+  const ringColor = selected ? SELECTED_COLOR : linkSource ? LINK_PICK_COLOR : null;
 
   return (
     <group position={[x, 0, z]}>
@@ -42,8 +47,8 @@ export function ComponentStack({ node, selected, dragging, onPointerDown }: Prop
           <boxGeometry args={[BOX, UNIT_HEIGHT, BOX]} />
           <meshStandardMaterial
             color={color}
-            emissive={selected ? SELECTED_COLOR : '#000000'}
-            emissiveIntensity={selected ? 0.25 : 0}
+            emissive={ringColor ?? '#000000'}
+            emissiveIntensity={ringColor ? 0.25 : 0}
             transparent={dragging}
             opacity={dragging ? 0.55 : 1}
             roughness={0.45}
@@ -52,10 +57,10 @@ export function ComponentStack({ node, selected, dragging, onPointerDown }: Prop
         </mesh>
       ))}
 
-      {selected && (
+      {ringColor && (
         <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.45, 0.52, 32]} />
-          <meshBasicMaterial color={SELECTED_COLOR} />
+          <meshBasicMaterial color={ringColor} />
         </mesh>
       )}
 

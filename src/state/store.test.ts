@@ -116,3 +116,115 @@ describe('board store', () => {
     expect(ids.size).toBe(2);
   });
 });
+
+describe('linking', () => {
+  beforeEach(() => state().reset());
+
+  it('picks a source on the first click and connects on the second', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    const api = drop(2, 2, 'api_server');
+    state().setLinking(true);
+    state().clickNodeForLink(lb);
+    expect(state().linkFrom).toBe(lb);
+    state().clickNodeForLink(api);
+    expect(state().topology.links).toEqual([{ id: expect.any(String), from: lb, to: api }]);
+  });
+
+  it('cancels the pick when the source is clicked again', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    state().setLinking(true);
+    state().clickNodeForLink(lb);
+    state().clickNodeForLink(lb);
+    expect(state().linkFrom).toBeNull();
+    expect(state().topology.links).toHaveLength(0);
+  });
+
+  it('stays picked after a successful link, so a fan-out is one click per target', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    const a = drop(2, 2, 'api_server');
+    const b = drop(3, 3, 'api_server');
+    state().setLinking(true);
+    state().clickNodeForLink(lb);
+    state().clickNodeForLink(a);
+    state().clickNodeForLink(b);
+    expect(state().topology.links).toHaveLength(2);
+    expect(state().linkFrom).toBe(lb);
+  });
+
+  it('stays picked after a refused link, so a different target can be tried immediately', () => {
+    const client = drop(1, 1, 'client');
+    const db = drop(2, 2, 'sql_primary');
+    const lb = drop(3, 3, 'load_balancer');
+    state().setLinking(true);
+    state().clickNodeForLink(client);
+    state().clickNodeForLink(db); // illegal: client -> sql_primary
+    expect(state().topology.links).toHaveLength(0);
+    expect(state().linkFrom).toBe(client);
+    state().clickNodeForLink(lb); // legal: client -> load_balancer
+    expect(state().topology.links).toHaveLength(1);
+  });
+
+  it('backs out of a pick without leaving linking mode', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    state().setLinking(true);
+    state().clickNodeForLink(lb);
+    state().cancelLinkPick();
+    expect(state().linkFrom).toBeNull();
+    expect(state().linking).toBe(true);
+  });
+
+  it('turning linking off clears the pick', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    state().setLinking(true);
+    state().clickNodeForLink(lb);
+    state().setLinking(false);
+    expect(state().linkFrom).toBeNull();
+    expect(state().linking).toBe(false);
+  });
+
+  it('does not start a drag while linking', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    state().setLinking(true);
+    state().beginDrag(lb);
+    expect(state().draggingId).toBeNull();
+  });
+
+  it('selecting a link clears node selection and vice versa', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    const api = drop(2, 2, 'api_server');
+    state().setLinking(true);
+    state().clickNodeForLink(lb);
+    state().clickNodeForLink(api);
+    const linkId = state().topology.links[0]!.id;
+
+    state().selectLink(linkId);
+    expect(state().selectedLinkId).toBe(linkId);
+    expect(state().selectedId).toBeNull();
+
+    state().select(api);
+    expect(state().selectedId).toBe(api);
+    expect(state().selectedLinkId).toBeNull();
+  });
+
+  it('deletes the selected link', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    const api = drop(2, 2, 'api_server');
+    state().setLinking(true);
+    state().clickNodeForLink(lb);
+    state().clickNodeForLink(api);
+    state().selectLink(state().topology.links[0]!.id);
+    state().deleteSelectedLink();
+    expect(state().topology.links).toHaveLength(0);
+    expect(state().selectedLinkId).toBeNull();
+  });
+
+  it('does nothing on link delete with no link selected', () => {
+    const lb = drop(1, 1, 'load_balancer');
+    const api = drop(2, 2, 'api_server');
+    state().setLinking(true);
+    state().clickNodeForLink(lb);
+    state().clickNodeForLink(api);
+    state().deleteSelectedLink();
+    expect(state().topology.links).toHaveLength(1);
+  });
+});

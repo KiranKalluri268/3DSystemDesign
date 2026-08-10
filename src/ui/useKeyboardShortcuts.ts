@@ -4,9 +4,9 @@ import { useBoard } from '../state/store';
 /**
  * Keyboard shortcuts for the board.
  *
- * Escape disarms the palette, which is the way out of "every click places
- * another component" — without it the only escape is clicking the armed
- * palette entry again, which is not discoverable.
+ * Escape backs out of whatever mode is active — disarms the palette, or
+ * leaves linking mode — which is the way out of "every click does the same
+ * thing again" without a discoverable UI affordance for it.
  */
 export function useKeyboardShortcuts(): void {
   useEffect(() => {
@@ -28,11 +28,20 @@ export function useKeyboardShortcuts(): void {
           if (store.selectedId) {
             event.preventDefault();
             store.deleteSelected();
+          } else if (store.selectedLinkId) {
+            event.preventDefault();
+            store.deleteSelectedLink();
           }
           break;
         case 'Escape':
           store.armKind(null);
           store.select(null);
+          store.selectLink(null);
+          store.setLinking(false);
+          break;
+        case 'c':
+        case 'C':
+          store.setLinking(!store.linking);
           break;
         case '+':
         case '=':
