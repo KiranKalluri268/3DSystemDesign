@@ -98,6 +98,19 @@ an acyclic graph, and a component with nothing downstream answers the request
 itself — an API server with no database is a real design, so the only shape
 that would score nonsensically, an unwired client, is refused up front.
 
+### Wiring
+
+Connecting components on the board refuses exactly what `validateTopology`
+would otherwise catch after a run: a self-link, a repeat of an existing
+directed connection, and any target kind the roster's `canConnectTo` forbids.
+The refusal happens at the click, with a reason, rather than after hitting
+Run — the same rule enforced in two places so the message lands at the
+moment the player can act on it. Note that the roster currently allows a
+`client` to connect directly to an `api_server`, bypassing a load balancer;
+that is a roster decision from phase 1, not a wiring bug, and whether it
+should be tightened is a question for level design once levels exist to
+constrain it via `palette`.
+
 ## 5. Component roster (v1)
 
 | Component | Capacity | Base latency | Teaching point |
@@ -140,8 +153,8 @@ touching engine or renderer code.
 | 0 | Scaffold: Vite + TS + R3F, isometric board, CI, this doc | **done** |
 | 1 | Headless sim engine + metrics, unit tested | **done** |
 | 2 | Place / drag / delete components, snap to grid | **done** |
-| 3 | Wiring: click-to-connect, validation, link rendering | next |
-| 4 | Run mode: animated packets, live HUD, pass/fail | |
+| 3 | Wiring: click-to-connect, validation, link rendering | **done** |
+| 4 | Run mode: animated packets, live HUD, pass/fail | next |
 | 5 | Levels 1–3 with briefs and objectives | |
 | 6 | Progression: budget, stars, "why you failed" explainers | |
 | 7 | Polish, tutorial, GitHub Pages deploy | |
