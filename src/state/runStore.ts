@@ -2,8 +2,7 @@ import { create } from 'zustand';
 import { runSimulation, type RunResult } from '../sim/engine';
 import { scoreRun, type Verdict } from '../sim/score';
 import { TICK_MS } from '../sim/constants';
-import { SANDBOX_LEVEL } from '../levels/sandbox';
-import type { Topology } from '../sim/types';
+import type { Level, Topology } from '../sim/types';
 
 export type RunStatus = 'editing' | 'running' | 'finished';
 
@@ -25,7 +24,7 @@ export interface RunState {
   /** Simulated seconds advanced per real second of playback. */
   speed: number;
 
-  start: (topology: Topology) => void;
+  start: (topology: Topology, level: Level) => void;
   advance: (deltaSeconds: number) => void;
   setSpeed: (speed: number) => void;
   reset: () => void;
@@ -39,9 +38,9 @@ export const useRun = create<RunState>((set, get) => ({
   playbackTick: 0,
   speed: 4,
 
-  start: (topology) => {
-    const result = runSimulation(topology, SANDBOX_LEVEL, { seed: RUN_SEED });
-    const verdict = scoreRun(result, SANDBOX_LEVEL, topology);
+  start: (topology, level) => {
+    const result = runSimulation(topology, level, { seed: RUN_SEED });
+    const verdict = scoreRun(result, level, topology);
     // A refused topology has nothing to animate — go straight to the
     // explanation instead of "playing" zero ticks of nothing.
     const status: RunStatus = result.issues.length > 0 ? 'finished' : 'running';
