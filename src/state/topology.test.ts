@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_REPLICAS,
+  addLink,
+  canLink,
   createIdFactory,
   emptyTopology,
+  linksTouching,
   moveNode,
   nodeAt,
   placeNode,
+  removeLink,
   removeNode,
   setReplicas,
   withinBoard,
@@ -163,6 +167,112 @@ describe('setReplicas', () => {
   it('rounds a fractional count', () => {
     const { topology, placedId } = place(emptyTopology(), 1, 1);
     expect(setReplicas(topology, placedId!, 2.6).nodes[0]!.replicas).toBe(3);
+  });
+});
+
+describe('addLink', () => {
+  function pair(fromKind: NodeKind, toKind: NodeKind) {
+    const a = place(emptyTopology(), 1, 1, fromKind);
+    const b = place(a.topology, 2, 2, toKind);
+    return { topology: b.topology, from: a.placedId!, to: b.placedId! };
+  }
+
+  it('connects two components the roster allows', () => {
+    const { topology, from, to } = pair('load_balancer', 'api_server');
+    const result = addLink(topology, from, to, createIdFactory('l'));
+    expect(result.refused).toBeUndefined();
+    expect(result.linkId).not.toBeNull();
+    expect(result.topology.links).toEqual([{ id: result.linkId, from, to }]);
+  });
+
+  it('refuses a connection the roster forbids', () => {
+    const { topology, from, to } = pair('client', 'sql_primary');
+    const result = addLink(topology, from, to, createIdFactory('l'));
+    expect(result.refused).toBe('illegal');
+    expect(result.topology.links).toHaveLength(0);
+  });
+
+  it('refuses a component linking to itself', () => {
+    const { topology, from } = pair('api_server', 'cache');
+    const result = addLink(topology, from, from, createIdFactory('l'));
+    expect(result.refused).toBe('self');
+  });
+
+  it('refuses a connection that already exists', () => {
+    const { topology, from, to } = pair('load_balancer', 'api_server');
+    const first = addLink(topology, from, to, createIdFactory('l'));
+    const second = addLink(first.topology, from, to, createIdFactory('l'));
+    expect(second.refused).toBe('duplicate');
+    expect(second.topology.links).toHaveLength(1);
+  });
+
+  it('allows the reverse direction of an existing link', () => {
+    // The roster forbids most reverse pairs anyway, but the duplicate check
+    // itself must key on direction, not on the unordered pair.
+    const { topology, from, to } = pair('load_balancer', 'api_server');
+    const forward = addLink(topology, from, to, createIdFactory('l'));
+    const reverse = addLink(forward.topology, to, from, createIdFactory('l'));
+    expect(reverse.refused).toBe('illegal'); // api_server -> load_balancer isn't in the roster
+  });
+
+  it('refuses a link touching a node that is not there', () => {
+    const { topology, from } = pair('load_balancer', 'api_server');
+    const result = addLink(topology, from, 'ghost', createIdFactory('l'));
+    expect(result.refused).toBe('missing_node');
+  });
+
+  it('does not mutate the topology it was given', () => {
+    const { topology, from, to } = pair('load_balancer', 'api_server');
+    addLink(topology, from, to, createIdFactory('l'));
+    expect(topology.links).toHaveLength(0);
+  });
+});
+
+describe('removeLink', () => {
+  it('removes only the named link', () => {
+    const { topology, from, to } = (() => {
+      const a = place(emptyTopology(), 1, 1, 'load_balancer');
+      const b = place(a.topology, 2, 2, 'api_server');
+      const c = place(b.topology, 3, 3, 'api_server');
+      const l1 = addLink(c.topology, a.placedId!, b.placedId!, createIdFactory('l1-'));
+      const l2 = addLink(l1.topology, a.placedId!, c.placedId!, createIdFactory('l2-'));
+      return { topology: l2.topology, from: l1.linkId!, to: l2.linkId! };
+    })();
+    const after = removeLink(topology, from);
+    expect(after.links.map((l) => l.id)).toEqual([to]);
+  });
+
+  it('ignores an id that is not there', () => {
+    const topology = emptyTopology();
+    expect(removeLink(topology, 'ghost')).toEqual(topology);
+  });
+});
+
+describe('canLink', () => {
+  it('agrees with the roster', () => {
+    expect(canLink('load_balancer', 'api_server')).toBe(true);
+    expect(canLink('client', 'sql_primary')).toBe(false);
+  });
+
+  it('never allows a kind to link to itself', () => {
+    expect(canLink('api_server', 'api_server')).toBe(false);
+  });
+});
+
+describe('linksTouching', () => {
+  it('finds links in either direction', () => {
+    const a = place(emptyTopology(), 1, 1, 'load_balancer');
+    const b = place(a.topology, 2, 2, 'api_server');
+    const c = place(b.topology, 3, 3, 'sql_primary');
+    const l1 = addLink(c.topology, a.placedId!, b.placedId!, createIdFactory('l1-'));
+    const l2 = addLink(l1.topology, b.placedId!, c.placedId!, createIdFactory('l2-'));
+    const touching = linksTouching(l2.topology, b.placedId!);
+    expect(touching).toHaveLength(2);
+  });
+
+  it('returns nothing for a node with no connections', () => {
+    const { topology, placedId } = place(emptyTopology(), 1, 1);
+    expect(linksTouching(topology, placedId!)).toEqual([]);
   });
 });
 

@@ -1,5 +1,6 @@
 import { GRID_SIZE } from '../sim/constants';
-import type { Cell, NodeKind, PlacedNode, Topology } from '../sim/types';
+import { specFor } from '../sim/specs';
+import type { Cell, Link, NodeKind, PlacedNode, Topology } from '../sim/types';
 
 /**
  * Editing operations on a topology.
@@ -80,6 +81,61 @@ export function removeNode(topology: Topology, id: string): Topology {
     nodes: topology.nodes.filter((n) => n.id !== id),
     links: topology.links.filter((l) => l.from !== id && l.to !== id),
   };
+}
+
+export type LinkRefusalReason = 'self' | 'duplicate' | 'illegal' | 'missing_node';
+
+export interface LinkResult {
+  topology: Topology;
+  linkId: string | null;
+  /** Why the link was refused, so the UI can say something specific. */
+  refused?: LinkRefusalReason;
+}
+
+/**
+ * Connect two placed components.
+ *
+ * Refusals mirror the rules `validateTopology` would otherwise catch after
+ * the fact — a self-link, a repeat of an existing connection, or a target
+ * kind the roster forbids. Checking here means the player never gets to draw
+ * a wire that a run would immediately reject; the message comes at the
+ * moment of the click instead of after hitting Run.
+ */
+export function addLink(
+  topology: Topology,
+  fromId: string,
+  toId: string,
+  nextId: () => string,
+): LinkResult {
+  const from = topology.nodes.find((n) => n.id === fromId);
+  const to = topology.nodes.find((n) => n.id === toId);
+  if (!from || !to) return { topology, linkId: null, refused: 'missing_node' };
+  if (fromId === toId) return { topology, linkId: null, refused: 'self' };
+  if (topology.links.some((l) => l.from === fromId && l.to === toId)) {
+    return { topology, linkId: null, refused: 'duplicate' };
+  }
+  if (!specFor(from.kind).canConnectTo.includes(to.kind)) {
+    return { topology, linkId: null, refused: 'illegal' };
+  }
+
+  const id = nextId();
+  return {
+    topology: { ...topology, links: [...topology.links, { id, from: fromId, to: toId }] },
+    linkId: id,
+  };
+}
+
+export function removeLink(topology: Topology, id: string): Topology {
+  return { ...topology, links: topology.links.filter((l) => l.id !== id) };
+}
+
+/** Whether the roster would ever allow a link from this kind to that one. */
+export function canLink(fromKind: NodeKind, toKind: NodeKind): boolean {
+  return fromKind !== toKind && specFor(fromKind).canConnectTo.includes(toKind);
+}
+
+export function linksTouching(topology: Topology, nodeId: string): Link[] {
+  return topology.links.filter((l) => l.from === nodeId || l.to === nodeId);
 }
 
 export function setReplicas(topology: Topology, id: string, replicas: number): Topology {
