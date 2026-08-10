@@ -164,19 +164,44 @@ and nothing was ever visible on screen.
 Each level introduces exactly one new failure mode, and its solution is the
 next level's starting assumption.
 
-1. **One server, one problem** — a single API server saturates. Add a load
-   balancer and replicas.
-2. **The slow query** — the database is now the bottleneck. Add a cache, and
-   meet cache invalidation.
-3. **The write burst** — writes cannot be cached. Add a queue and workers,
-   and meet eventual consistency.
+1. **One server, one problem** *(shipped)* — a single API server saturates.
+   Add a load balancer and replicas. No database in the palette: an API
+   server with nothing downstream completes the request itself, so the
+   level needs nothing past a client, a load balancer, and replicas.
+2. **The slow query** *(shipped)* — the database is now the bottleneck. Add
+   a cache. The brief does not promise invalidation or staleness — the
+   engine only has a flat `hitRatio`, not a simulated invalidation
+   mechanic, and a level must not claim what it doesn't model.
+3. **The write burst** *(blocked on engine work)* — writes cannot be
+   cached, so a queue and workers absorb the burst instead. This needs two
+   things the engine does not have: a way to tell a write request from a
+   read one, and a node behaviour where reaching it completes the response
+   immediately while the real work continues separately (today every hop
+   is synchronous end-to-end, so routing through a queue only adds
+   latency, the opposite of the lesson). Both are real engine changes, not
+   data files — see §4 "The one hard rule." Not started.
 4. **Read heavy** — add read replicas, and meet replication lag.
 5. **The single point of failure** — a component fails mid-run. Learn
    redundancy.
 6. **Going global** — a second region, and the cost of distance.
 
 Levels are plain data in `src/levels/`, so contributors can add one without
-touching engine or renderer code.
+touching engine or renderer code — true for levels 1 and 2, and the reason
+level 3 is not simply "add a file": it cannot be expressed in that shape
+yet, which is itself a signal about the engine rather than something to
+special-case around.
+
+### Level selection
+
+`levelStore` holds only the current level's `id`, never the `Level` object
+itself — every component that needs the level's content looks it up fresh
+via `getLevel`, so nothing goes stale if a level's data changes underneath
+an already-selected id. Choosing a level (or leaving one, via "Change
+level") resets both the board and the run stores first: nothing from a
+previous attempt should leak into the next one. The sandbox is offered
+alongside the curated levels as "Free play," not folded into `LEVELS` — it
+is scaffolding for testing Run mode itself, not a numbered level with a
+progression to fit into.
 
 ## 7. Build phases
 
@@ -187,7 +212,7 @@ touching engine or renderer code.
 | 2 | Place / drag / delete components, snap to grid | **done** |
 | 3 | Wiring: click-to-connect, validation, link rendering | **done** |
 | 4 | Run mode: animated packets, live HUD, pass/fail | **done** |
-| 5 | Levels 1–3 with briefs and objectives | next |
+| 5 | Levels 1–2 with briefs and objectives; level 3 blocked on engine work | **done** |
 | 6 | Progression: budget, stars, "why you failed" explainers | |
 | 7 | Polish, tutorial, GitHub Pages deploy | |
 
