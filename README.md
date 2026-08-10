@@ -9,24 +9,23 @@ through as visible packets. Overloaded components glow red, queues pile up,
 dropped requests fall through the floor. The scoreboard gives you p99 latency,
 error rate and cost per hour — and tells you which one you failed.
 
-> **Status: you can build a topology; running it is next.** Place, wire and
-> stack components on the grid — the simulation already scores a topology
-> headlessly, but running traffic and seeing the result in the app is the
-> next phase. See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design and
-> build plan.
+> **Status: the core loop works end to end.** Place components, wire them
+> together, hit Run Traffic, and watch packets flow while the HUD climbs
+> live — then get a verdict explaining why the design held up or didn't.
+> No real levels yet: Run mode plays against a sandbox scenario until phase
+> 5 adds curated levels with their own briefs. See
+> [`docs/DESIGN.md`](docs/DESIGN.md) for the full design and build plan.
 
-Today the engine already produces the arc the game is built on. One API
-server against a ramp to 2,000 req/s:
+A design that's too small to hold the sandbox's ramp (100 → 8,000 req/s over
+two minutes):
 
-```
-1 API server   p99 2040ms   403 rps   61.6% errors   $3/hr   FAIL
-3 API servers  p99 2040ms   961 rps    8.5% errors   $5/hr   FAIL
-6 API servers  p99   50ms  1050 rps    0.0% errors   $8/hr   PASS
-```
+> *196,047 requests failed — API Server ran out of capacity and started
+> shedding requests. It accounts for 100.0% of the failures, and its queue
+> peaked at 800 waiting requests. Give it more capacity, or take work off
+> it.*
 
-...with the failure explained rather than merely reported: *"19,407 requests
-failed — API Server ran out of capacity and started shedding requests. Its
-queue peaked at 800 waiting requests."*
+Scale the API tier and add a cache, and the same scenario passes with room
+to spare: p99 80ms (target 300ms), 0% errors, $38/hr (budget $40/hr).
 
 ## Running it
 
