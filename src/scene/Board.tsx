@@ -1,16 +1,18 @@
-import { useCallback, useState } from 'react';
-import { Canvas, type ThreeEvent } from '@react-three/fiber';
+import { useCallback, useMemo, useState } from 'react';
+import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Grid, OrbitControls } from '@react-three/drei';
 import { ComponentStack } from './ComponentStack';
 import { LinkLine } from './LinkLine';
+import { PacketLayer } from './PacketLayer';
 import {
   COMPONENT_COLORS,
   INVALID_COLOR,
   LINK_PREVIEW_VALID_COLOR,
 } from './component-colors';
 import { UNIT_HEIGHT, attachPoint, cellToWorld, worldToCell } from './board-geometry';
-import { GRID_SIZE } from '../sim/constants';
+import { GRID_SIZE, TICK_MS } from '../sim/constants';
 import { useBoard } from '../state/store';
+import { useRun } from '../state/runStore';
 import { canLink, nodeAt, withinBoard } from '../state/topology';
 import type { Cell, NodeKind } from '../sim/types';
 
@@ -27,9 +29,23 @@ export function Board() {
       <color attach="background" args={['#0e1116']} />
       <ambientLight intensity={0.75} />
       <directionalLight position={[10, 18, 8]} intensity={1.15} castShadow />
+      <PlaybackDriver />
       <Scene />
     </Canvas>
   );
+}
+
+/**
+ * Advances run playback once a frame. Lives inside the Canvas because
+ * useFrame needs an r3f render loop — the run store itself stays plain
+ * zustand with no rendering concerns, this is the only thing that ticks it.
+ */
+function PlaybackDriver() {
+  useFrame((_, delta) => {
+    const { status, advance } = useRun.getState();
+    if (status === 'running') advance(delta);
+  });
+  return null;
 }
 
 function Scene() {
@@ -49,6 +65,11 @@ function Scene() {
   const clickNodeForLink = useBoard((s) => s.clickNodeForLink);
   const cancelLinkPick = useBoard((s) => s.cancelLinkPick);
 
+  const runStatus = useRun((s) => s.status);
+  const runResult = useRun((s) => s.result);
+  const playbackTick = useRun((s) => s.playbackTick);
+  const editing = runStatus === 'editing';
+
   const [hovered, setHovered] = useState<Cell | null>(null);
 
   const onFloorMove = useCallback(
@@ -62,6 +83,7 @@ function Scene() {
 
   const onFloorDown = useCallback(
     (event: ThreeEvent<PointerEvent>) => {
+      if (!editing) return;
       const cell = worldToCell(event.point.x, event.point.z);
       if (linking) {
         // The floor has no node to link to; treat it as backing out of the
@@ -76,18 +98,36 @@ function Scene() {
         selectLink(null);
       }
     },
-    [armedKind, linking, placeAt, select, selectLink, cancelLinkPick],
+    [editing, armedKind, linking, placeAt, select, selectLink, cancelLinkPick],
   );
 
-  const ghostCell = armedKind && hovered && withinBoard(hovered) ? hovered : null;
+  const ghostCell = editing && armedKind && hovered && withinBoard(hovered) ? hovered : null;
   const ghostBlocked = ghostCell ? Boolean(nodeAt(topology, ghostCell)) : false;
 
   const linkSourceNode = linkFrom ? topology.nodes.find((n) => n.id === linkFrom) : undefined;
   const hoveredNode = hovered ? nodeAt(topology, hovered) : undefined;
   const previewTarget =
-    linking && linkSourceNode && hoveredNode && hoveredNode.id !== linkFrom
+    editing && linking && linkSourceNode && hoveredNode && hoveredNode.id !== linkFrom
       ? hoveredNode
       : undefined;
+
+  // Queue depth as a fraction of capacity, per node, at the current playback
+  // second — the number the danger tint on each box actually reads.
+  const dangerByNode = useMemo(() => {
+    const fractions = new Map<string, number>();
+    if (!runResult) return fractions;
+    const ticksPerSecond = 1000 / TICK_MS;
+    const second = Math.min(
+      Math.floor(playbackTick / ticksPerSecond),
+      Math.max(0, ...Object.values(runResult.queueDepthHistory).map((h) => h.length - 1)),
+    );
+    for (const stats of runResult.nodeStats) {
+      const history = runResult.queueDepthHistory[stats.nodeId];
+      const depth = history?.[second] ?? 0;
+      fractions.set(stats.nodeId, stats.maxQueue > 0 ? depth / stats.maxQueue : 0);
+    }
+    return fractions;
+  }, [runResult, playbackTick]);
 
   return (
     <>
@@ -118,7 +158,7 @@ function Scene() {
         infiniteGrid={false}
       />
 
-      {armedKind && ghostCell && (
+      {ghostCell && armedKind && (
         <Ghost cell={ghostCell} blocked={ghostBlocked} kind={armedKind} />
       )}
 
@@ -133,7 +173,7 @@ function Scene() {
             to={attachPoint(to.cell)}
             selected={link.id === selectedLinkId}
             onPointerDown={() => {
-              if (!linking) selectLink(link.id);
+              if (editing && !linking) selectLink(link.id);
             }}
           />
         );
@@ -142,7 +182,7 @@ function Scene() {
       {/* The wire actively being drawn, following the cursor to whatever
           cell is hovered. Its colour previews whether the roster would
           accept the connection before the player commits to the click. */}
-      {linking && linkSourceNode && hovered && (
+      {editing && linking && linkSourceNode && hovered && (
         <LinkLine
           from={attachPoint(linkSourceNode.cell)}
           to={attachPoint(hovered)}
@@ -159,18 +199,22 @@ function Scene() {
         <ComponentStack
           key={node.id}
           node={node}
-          selected={node.id === selectedId}
+          selected={editing && node.id === selectedId}
           dragging={node.id === draggingId}
-          linkSource={node.id === linkFrom}
+          linkSource={editing && node.id === linkFrom}
+          dangerFraction={dangerByNode.get(node.id) ?? 0}
           onPointerDown={(event) => {
             // Without this the floor beneath also handles the click, which
             // would place a component on top of the one being grabbed.
             event.stopPropagation();
+            if (!editing) return;
             if (linking) clickNodeForLink(node.id);
             else beginDrag(node.id);
           }}
         />
       ))}
+
+      <PacketLayer />
 
       <OrbitControls
         makeDefault
