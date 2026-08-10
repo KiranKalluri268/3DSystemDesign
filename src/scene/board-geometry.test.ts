@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_REPLICAS } from '../state/topology';
 import {
   UNIT_GAP,
   UNIT_HEIGHT,
   attachPoint,
   cellToWorld,
+  packetHoverPoint,
   stackHeight,
   stackTop,
   worldToCell,
@@ -90,5 +92,32 @@ describe('attachPoint', () => {
     const [cx, , cz] = cellToWorld({ x: 5, z: 7, y: 0 });
     expect(x).toBe(cx);
     expect(z).toBe(cz);
+  });
+});
+
+describe('packetHoverPoint', () => {
+  it('clears the tallest possible stack', () => {
+    // A packet at box-centre height (attachPoint) sits inside a node's
+    // geometry, hidden regardless of camera angle. Packets need to fly
+    // above even a maxed-out stack, or they are invisible whenever a
+    // component is scaled up.
+    const [, y] = packetHoverPoint({ x: 3, z: 3, y: 0 });
+    expect(y).toBeGreaterThan(stackTop(MAX_REPLICAS));
+  });
+
+  it('is centred over the node\'s cell, like attachPoint', () => {
+    const [x, , z] = packetHoverPoint({ x: 5, z: 7, y: 0 });
+    const [cx, , cz] = cellToWorld({ x: 5, z: 7, y: 0 });
+    expect(x).toBe(cx);
+    expect(z).toBe(cz);
+  });
+
+  it('sits at the same height regardless of replica count', () => {
+    // Packets fly at one fixed altitude, not one relative to any particular
+    // node's stack -- a packet does not know how tall the node it is
+    // hovering over happens to be scaled to.
+    const a = packetHoverPoint({ x: 1, z: 1, y: 0 });
+    const b = packetHoverPoint({ x: 9, z: 9, y: 0 });
+    expect(a[1]).toBe(b[1]);
   });
 });

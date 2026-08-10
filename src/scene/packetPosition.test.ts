@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { packetPositionAt } from './packetPosition';
-import { attachPoint } from './board-geometry';
+import { attachPoint, packetHoverPoint } from './board-geometry';
 import type { PacketTrace } from '../sim/engine';
 import type { Cell } from '../sim/types';
 
@@ -33,7 +33,7 @@ describe('packetPositionAt', () => {
     const at = packetPositionAt(trace, 15, cellOf, clientCell);
     expect(at.visible).toBe(true);
     expect(at.state).toBe('waiting');
-    expect(at.position).toEqual(attachPoint(cellA));
+    expect(at.position).toEqual(packetHoverPoint(cellA));
   });
 
   it('travels linearly between two nodes', () => {
@@ -48,8 +48,8 @@ describe('packetPositionAt', () => {
     };
     const mid = packetPositionAt(trace, 15, cellOf, clientCell); // halfway from 10 to 20
     expect(mid.state).toBe('traveling');
-    const a = attachPoint(cellA);
-    const b = attachPoint(cellB);
+    const a = packetHoverPoint(cellA);
+    const b = packetHoverPoint(cellB);
     expect(mid.position[0]).toBeCloseTo((a[0] + b[0]) / 2);
     expect(mid.position[2]).toBeCloseTo((a[2] + b[2]) / 2);
   });
@@ -66,7 +66,7 @@ describe('packetPositionAt', () => {
       endTick: 5020,
     };
     const at = packetPositionAt(trace, 20, cellOf, clientCell);
-    expect(at.position).toEqual(attachPoint(cellB));
+    expect(at.position).toEqual(packetHoverPoint(cellB));
   });
 
   it('walks through several hops to find the right one', () => {
@@ -82,10 +82,14 @@ describe('packetPositionAt', () => {
     };
     const at = packetPositionAt(trace, 22, cellOf, clientCell);
     expect(at.state).toBe('waiting');
-    expect(at.position).toEqual(attachPoint(cellC));
+    expect(at.position).toEqual(packetHoverPoint(cellC));
   });
 
   it('animates a completed packet back toward the client', () => {
+    // endTick (20) is when the simulation actually resolved the request --
+    // a real hop, often just a few ticks. The exit animation runs on its
+    // own fixed EXIT_TICKS clock instead, because pacing it by the real
+    // hop would make it imperceptibly brief at any playback speed.
     const trace: PacketTrace = {
       id: 0,
       segments: [{ nodeId: 'a', arriveTick: 0, departTick: 10 }],
@@ -93,10 +97,27 @@ describe('packetPositionAt', () => {
       endTick: 20,
     };
     const start = packetPositionAt(trace, 10, cellOf, clientCell);
-    const end = packetPositionAt(trace, 20, cellOf, clientCell);
-    expect(start.position).toEqual(attachPoint(cellA));
-    expect(end.position[0]).toBeCloseTo(attachPoint(clientCell)[0]);
-    expect(end.position[2]).toBeCloseTo(attachPoint(clientCell)[2]);
+    const stillEnRoute = packetPositionAt(trace, 20, cellOf, clientCell); // endTick itself
+    const arrived = packetPositionAt(trace, 10 + 40, cellOf, clientCell); // departTick + EXIT_TICKS
+
+    expect(start.position).toEqual(packetHoverPoint(cellA));
+    expect(stillEnRoute.visible).toBe(true);
+    expect(stillEnRoute.position).not.toEqual(packetHoverPoint(clientCell));
+    expect(arrived.position[0]).toBeCloseTo(packetHoverPoint(clientCell)[0]);
+    expect(arrived.position[2]).toBeCloseTo(packetHoverPoint(clientCell)[2]);
+  });
+
+  it('keeps a completed packet visible well past its simulated end tick', () => {
+    // The whole point of decoupling the exit animation from endTick: a
+    // packet that resolved in a handful of ticks must still be on screen
+    // long enough to actually be seen.
+    const trace: PacketTrace = {
+      id: 0,
+      segments: [{ nodeId: 'a', arriveTick: 0, departTick: 2 }],
+      outcome: 'completed',
+      endTick: 4, // a 2-tick hop -- imperceptible if this governed visibility
+    };
+    expect(packetPositionAt(trace, 30, cellOf, clientCell).visible).toBe(true);
   });
 
   it('fades a dropped packet in place rather than sending it anywhere', () => {
@@ -109,7 +130,7 @@ describe('packetPositionAt', () => {
     };
     const at = packetPositionAt(trace, 0, cellOf, clientCell);
     expect(at.state).toBe('dropped');
-    expect(at.position).toEqual(attachPoint(cellA));
+    expect(at.position).toEqual(packetHoverPoint(cellA));
   });
 
   it('disappears once its fade window has passed', () => {
@@ -126,6 +147,23 @@ describe('packetPositionAt', () => {
   it('is invisible for a trace with no segments', () => {
     const trace: PacketTrace = { id: 0, segments: [], outcome: 'dropped', endTick: 0 };
     expect(packetPositionAt(trace, 0, cellOf, clientCell).visible).toBe(false);
+  });
+
+  it('never sits at box-centre height, where a wire\'s attach point is', () => {
+    // A packet at attachPoint height sits exactly where a node's box is
+    // drawn -- a small sphere entirely inside a large opaque box, invisible
+    // from any camera angle regardless of colour or fade timing. This was a
+    // real bug: the trace, the fade window and the colour were all correct,
+    // and nothing was ever visible on screen because of this one thing.
+    const trace: PacketTrace = {
+      id: 0,
+      segments: [{ nodeId: 'a', arriveTick: 0, departTick: 100 }],
+      outcome: 'completed',
+      endTick: 110,
+    };
+    const at = packetPositionAt(trace, 50, cellOf, clientCell);
+    expect(at.position[1]).not.toBe(attachPoint(cellA)[1]);
+    expect(at.position[1]).toBeGreaterThan(attachPoint(cellA)[1]);
   });
 
   it('falls back rather than throwing when a node has been removed from the board', () => {
