@@ -9,10 +9,11 @@ through as visible packets. Overloaded components glow red, queues pile up,
 dropped requests fall through the floor. The scoreboard gives you p99 latency,
 error rate and cost per hour — and tells you which one you failed.
 
-> **Status: engine works, board is empty.** The simulation runs headless and
-> scores a design; placing and wiring components on the board is the next
-> phase. See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design and build
-> plan.
+> **Status: you can build a topology; running it is next.** Place, wire and
+> stack components on the grid — the simulation already scores a topology
+> headlessly, but running traffic and seeing the result in the app is the
+> next phase. See [`docs/DESIGN.md`](docs/DESIGN.md) for the full design and
+> build plan.
 
 Today the engine already produces the arc the game is built on. One API
 server against a ramp to 2,000 req/s:
