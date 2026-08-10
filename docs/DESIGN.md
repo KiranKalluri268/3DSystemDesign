@@ -111,6 +111,38 @@ that is a roster decision from phase 1, not a wiring bug, and whether it
 should be tightened is a question for level design once levels exist to
 constrain it via `palette`.
 
+### Run mode
+
+The engine still runs a whole traffic profile synchronously and instantly —
+there is no reason to hold up the computation for real time. What Run mode
+adds is a *replay* of that already-finished result: a bounded, evenly-spread
+sample of request paths (`MAX_TRACED_PACKETS`, via `estimateTotalOffered` so
+the sampling interval spreads across the whole run rather than clustering at
+the start) and a per-second snapshot of metrics and queue depth
+(`METRICS_SNAPSHOT_SECONDS`), both computed once during the run and then
+played back at a chosen speed. The run store's `playbackTick` is the only
+thing that advances in real time, driven by a `useFrame` hook; the
+simulation itself already happened.
+
+A packet's position is pure arithmetic over its recorded segments
+(`packetPosition.ts`), with two things tuned by feel rather than derived
+from the simulation: `FADE_TICKS` (how long a finished packet lingers before
+disappearing) and `EXIT_TICKS` (how long a completed packet's "response
+returns to the client" animation takes, since no segment in the engine
+actually represents a return trip). Both had to be sized for *legibility at
+the fastest playback speed*, not for simulation accuracy — a completed
+packet's real last-hop latency is often a handful of milliseconds, invisible
+at any speed if that governed how long it stayed on screen.
+
+Packets fly at a fixed altitude above the tallest possible stack
+(`packetHoverPoint`), not at the wire-attachment height a static line uses.
+A wire can share that lower height and still read fine, because only its
+endpoint touches it and the rest of the line is in open space; a small
+sphere sitting there is entirely inside a node's box, hidden from every
+camera angle. This was found only by looking at a real run in a browser —
+the trace, the colours and the fade timing were all correct in isolation,
+and nothing was ever visible on screen.
+
 ## 5. Component roster (v1)
 
 | Component | Capacity | Base latency | Teaching point |
@@ -154,8 +186,8 @@ touching engine or renderer code.
 | 1 | Headless sim engine + metrics, unit tested | **done** |
 | 2 | Place / drag / delete components, snap to grid | **done** |
 | 3 | Wiring: click-to-connect, validation, link rendering | **done** |
-| 4 | Run mode: animated packets, live HUD, pass/fail | next |
-| 5 | Levels 1–3 with briefs and objectives | |
+| 4 | Run mode: animated packets, live HUD, pass/fail | **done** |
+| 5 | Levels 1–3 with briefs and objectives | next |
 | 6 | Progression: budget, stars, "why you failed" explainers | |
 | 7 | Polish, tutorial, GitHub Pages deploy | |
 

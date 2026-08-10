@@ -260,3 +260,126 @@ hr {
   margin-top: 0.3rem;
   text-align: center;
 }
+
+/* Run bar -------------------------------------------------------------- */
+
+.runbar {
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  min-width: 16rem;
+}
+
+.run-button {
+  padding: 0.6rem 1.4rem;
+  border: 1px solid #2f6fb0;
+  border-radius: 0.4rem;
+  background: #1d4ed8;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.run-button:hover {
+  background: #2555c7;
+}
+
+.runbar .row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.playhead {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: #9fb0c3;
+}
+
+.speeds {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.speeds .chip {
+  width: auto;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+.speeds .chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Live HUD --------------------------------------------------------------- */
+
+.hud {
+  top: 1rem;
+  right: 1rem;
+  width: 15rem;
+}
+
+/* Verdict ------------------------------------------------------------------ */
+
+.verdict {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24rem;
+  max-width: calc(100% - 2rem);
+  padding: 1.5rem;
+  z-index: 20;
+}
+
+.verdict.pass {
+  border-color: #1f8a4c;
+}
+
+.verdict.fail {
+  border-color: #b23b3b;
+}
+
+.verdict h2 {
+  font-size: 1.4rem;
+  margin-bottom: 0.75rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.verdict.pass h2 {
+  color: #4ade80;
+}
+
+.verdict.fail h2 {
+  color: #ff8686;
+}
+
+.explanation {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #cdd8e3;
+  margin: 0 0 1rem;
+  text-align: left;
+}
+
+.verdict .stats {
+  text-align: left;
+}
+
+.verdict dd.ok {
+  color: #4ade80;
+}
+
+.verdict dd.bad {
+  color: #ff8686;
+}

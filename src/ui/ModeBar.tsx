@@ -1,4 +1,5 @@
 import { useBoard } from '../state/store';
+import { useRun } from '../state/runStore';
 
 /**
  * Switches the board between placing components and wiring them.
@@ -8,9 +9,12 @@ import { useBoard } from '../state/store';
  * survive across them.
  */
 export function ModeBar() {
+  const editing = useRun((s) => s.status) === 'editing';
   const linking = useBoard((s) => s.linking);
   const linkFrom = useBoard((s) => s.linkFrom);
   const setLinking = useBoard((s) => s.setLinking);
+
+  if (!editing) return null;
 
   return (
     <div className="panel modebar">

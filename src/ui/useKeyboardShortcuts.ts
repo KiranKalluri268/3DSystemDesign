@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useBoard } from '../state/store';
+import { useRun } from '../state/runStore';
 
 /**
  * Keyboard shortcuts for the board.
@@ -20,6 +21,9 @@ export function useKeyboardShortcuts(): void {
       ) {
         return;
       }
+      // The board is read-only once a run starts, same as every pointer
+      // interaction — a hidden shortcut should not be able to reach past that.
+      if (useRun.getState().status !== 'editing') return;
 
       const store = useBoard.getState();
       switch (event.key) {

@@ -137,6 +137,25 @@ Assume nothing behaves the way it reads.
 - **`base` in `vite.config.ts` is set for GitHub Pages** project-site hosting
   (`/3DSystemDesign/`). A root-domain deploy needs `BASE_PATH=/`, or every
   asset 404s in production while dev looks perfect.
+- **`clickNodeForLink`'s cancel is "click whatever `linkFrom` currently is,"
+  not "click the node you meant to pick next."** After a successful link the
+  source stays picked, so re-establishing a *different* source means
+  cancelling first — click the current `linkFrom`, then click the new
+  source. Clicking any other node instead doesn't cancel; it just attempts
+  (and usually fails, silently) a link from the still-current source. This
+  has cost a `links: 0` result and a run that goes straight to `finished`
+  with no visible cause, twice, in scripted browser verification. When
+  driving this from a script, always read `linkFrom` fresh immediately
+  before deciding what to click next — never assume which node is picked.
+- **A captured `const s = store.getState()` goes stale the instant any
+  action runs.** Zustand's `getState()` returns a point-in-time snapshot;
+  calling `s.someAction()` still mutates the live store correctly (actions
+  close over `set`/`get` internally), but reading `s.selectedId` afterward
+  returns whatever it was when `s` was captured, not the current value. This
+  produced a topology with zero links from a script that looked entirely
+  correct, because every "current id" it read was stuck at the initial
+  `null`. Call `store.getState()` again — fresh — every time you need a
+  current field, not just for actions.
 
 ## Levels and content
 

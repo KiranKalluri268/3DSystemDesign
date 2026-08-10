@@ -1,8 +1,14 @@
-import { MAX_QUEUE_SECONDS, REQUEST_TIMEOUT_MS, TICK_MS } from './constants';
+import {
+  MAX_QUEUE_SECONDS,
+  MAX_TRACED_PACKETS,
+  METRICS_SNAPSHOT_SECONDS,
+  REQUEST_TIMEOUT_MS,
+  TICK_MS,
+} from './constants';
 import { LatencyHistogram } from './histogram';
 import { createRng } from './rng';
 import { costPerHour, specFor } from './specs';
-import { offeredRpsAt } from './traffic';
+import { estimateTotalOffered, offeredRpsAt } from './traffic';
 import { validateTopology } from './validate';
 import type { Level, PlacedNode, RunMetrics, Topology } from './types';
 
@@ -15,8 +21,46 @@ export interface NodeStats {
   dropped: number;
   dropsByReason: Record<DropReason, number>;
   peakQueueDepth: number;
+  /** Same bound the engine sheds load against, so a renderer can scale depth into a fraction. */
+  maxQueue: number;
   /** Served requests as a fraction of what the component could have served. */
   utilization: number;
+}
+
+/** One node a traced packet sat at: when it arrived, and when it left (or null if it never did). */
+export interface PacketSegment {
+  nodeId: string;
+  arriveTick: number;
+  departTick: number | null;
+}
+
+export type PacketOutcome = 'completed' | 'dropped';
+
+/**
+ * The full path of one sampled request, for Run mode's packet animation.
+ *
+ * `segments` alone is enough to draw it: a packet sits at `nodeId` between
+ * `arriveTick` and `departTick`, then travels to the next segment's node
+ * between that `departTick` and the next `arriveTick`. A `departTick` of
+ * null means it never left — the segment it was dropped or is still queued
+ * at is always the last one.
+ */
+export interface PacketTrace {
+  id: number;
+  segments: PacketSegment[];
+  outcome: PacketOutcome;
+  dropReason?: DropReason;
+  /** Tick the packet completed or was dropped. */
+  endTick: number;
+}
+
+/** Cumulative metrics at a point in the run, for the HUD to show climbing live. */
+export interface MetricsSnapshot {
+  second: number;
+  p50LatencyMs: number;
+  p99LatencyMs: number;
+  throughputRps: number;
+  errorRate: number;
 }
 
 export interface RunResult {
@@ -26,6 +70,16 @@ export interface RunResult {
   dropped: number;
   /** Non-empty means nothing ran; the topology was refused. */
   issues: ReturnType<typeof validateTopology>;
+  /** A bounded, representative sample of full request paths, for animation. */
+  trace: PacketTrace[];
+  /** Cumulative metrics sampled every METRICS_SNAPSHOT_SECONDS. */
+  history: MetricsSnapshot[];
+  /** Queue depth per node, sampled at the same points as `history`. */
+  queueDepthHistory: Record<string, number[]>;
+  /** The traffic profile's own length, before any post-offer drain. */
+  offeredDurationSeconds: number;
+  /** The last tick actually simulated, including drain — what playback should run to. */
+  lastTick: number;
 }
 
 export interface RunOptions {
@@ -37,6 +91,7 @@ export interface RunOptions {
 
 interface Request {
   spawnTick: number;
+  traceId?: number;
 }
 
 /** A request in transit, due to arrive at `nodeId` (or to finish, if null). */
@@ -69,13 +124,15 @@ export function runSimulation(
   level: Level,
   options: RunOptions = {},
 ): RunResult {
+  const durationSeconds = options.durationSeconds ?? profileDuration(level);
+
   const issues = validateTopology(topology);
-  if (issues.length > 0) return refused(issues, topology);
+  if (issues.length > 0) return refused(issues, topology, durationSeconds);
 
   const rng = createRng(options.seed ?? 1);
-  const durationSeconds = options.durationSeconds ?? profileDuration(level);
   const totalTicks = Math.ceil((durationSeconds * 1000) / TICK_MS);
   const dt = TICK_MS / 1000;
+  const ticksPerSecond = 1000 / TICK_MS;
 
   const states = buildStates(topology);
   const client = [...states.values()].find((s) => s.node.kind === 'client')!;
@@ -87,10 +144,45 @@ export function runSimulation(
   /** Fractional request carried between ticks, so 150 rps is not 100 or 200. */
   let spawnCarry = 0;
 
-  const drop = (state: NodeState, reason: DropReason): void => {
+  // A bounded, evenly-spread sample of requests gets a full path recorded.
+  // Sampling every Nth spawned request (rather than a fixed count up front)
+  // spreads the sample across the whole run instead of clustering at the
+  // start, so a late spike is as likely to appear in the trace as the ramp.
+  const estimatedOffered = estimateTotalOffered(level.trafficProfile, durationSeconds);
+  const sampleEvery = Math.max(1, Math.round(estimatedOffered / MAX_TRACED_PACKETS) || 1);
+  let spawnedCount = 0;
+  let nextTraceId = 0;
+  const traces = new Map<number, PacketTrace>();
+
+  const history: MetricsSnapshot[] = [];
+  const queueDepthHistory: Record<string, number[]> = {};
+  for (const state of states.values()) queueDepthHistory[state.node.id] = [];
+
+  const openSegment = (request: Request, nodeId: string, tick: number): void => {
+    if (request.traceId === undefined) return;
+    traces.get(request.traceId)!.segments.push({ nodeId, arriveTick: tick, departTick: null });
+  };
+
+  const closeSegment = (request: Request, nodeId: string, tick: number): void => {
+    if (request.traceId === undefined) return;
+    const segments = traces.get(request.traceId)!.segments;
+    const last = segments[segments.length - 1];
+    if (last && last.nodeId === nodeId && last.departTick === null) last.departTick = tick;
+  };
+
+  const finish = (request: Request, tick: number, outcome: PacketOutcome, reason?: DropReason): void => {
+    if (request.traceId === undefined) return;
+    const trace = traces.get(request.traceId)!;
+    trace.outcome = outcome;
+    trace.endTick = tick;
+    if (reason) trace.dropReason = reason;
+  };
+
+  const drop = (state: NodeState, request: Request, tick: number, reason: DropReason): void => {
     dropped += 1;
     state.stats.dropped += 1;
     state.stats.dropsByReason[reason] += 1;
+    finish(request, tick, 'dropped', reason);
   };
 
   const deliver = (tick: number, item: InFlight): void => {
@@ -99,18 +191,24 @@ export function runSimulation(
       // Reached the end of its path: the response is complete.
       completed += 1;
       latencies.record((tick - request.spawnTick) * TICK_MS);
+      finish(request, tick, 'completed');
       return;
     }
     const state = states.get(item.nodeId)!;
     if ((tick - request.spawnTick) * TICK_MS >= REQUEST_TIMEOUT_MS) {
-      drop(state, 'timeout');
+      openSegment(request, state.node.id, tick);
+      closeSegment(request, state.node.id, tick);
+      drop(state, request, tick, 'timeout');
       return;
     }
     if (state.queue.length >= state.maxQueue) {
-      drop(state, 'queue_full');
+      openSegment(request, state.node.id, tick);
+      closeSegment(request, state.node.id, tick);
+      drop(state, request, tick, 'queue_full');
       return;
     }
     state.queue.push(request);
+    openSegment(request, state.node.id, tick);
     state.stats.peakQueueDepth = Math.max(
       state.stats.peakQueueDepth,
       state.queue.length,
@@ -131,14 +229,26 @@ export function runSimulation(
   const idle = (): boolean =>
     arrivals.size === 0 && [...states.values()].every((s) => s.queue.length === 0);
 
+  let lastTick = 0;
   for (let tick = 0; tick <= hardStop; tick++) {
+    lastTick = tick;
+
     // 1. New requests enter at the client.
     if (tick < totalTicks) {
       spawnCarry += offeredRpsAt(level.trafficProfile, (tick * TICK_MS) / 1000) * dt;
       const count = Math.floor(spawnCarry);
       spawnCarry -= count;
       for (let i = 0; i < count; i++) {
-        deliver(tick, { request: { spawnTick: tick }, nodeId: client.node.id });
+        spawnedCount += 1;
+        let traceId: number | undefined;
+        if (traces.size < MAX_TRACED_PACKETS && spawnedCount % sampleEvery === 0) {
+          traceId = nextTraceId++;
+          traces.set(traceId, { id: traceId, segments: [], outcome: 'dropped', endTick: tick });
+        }
+        const request: Request = traceId === undefined
+          ? { spawnTick: tick }
+          : { spawnTick: tick, traceId };
+        deliver(tick, { request, nodeId: client.node.id });
       }
     } else if (idle()) {
       break;
@@ -165,6 +275,7 @@ export function runSimulation(
         const request = state.queue.shift()!;
         state.budget -= 1;
         state.stats.served += 1;
+        closeSegment(request, state.node.id, tick);
 
         const next = chooseTarget(state, rng);
         const spec = specFor(state.node.kind);
@@ -172,17 +283,33 @@ export function runSimulation(
         schedule(tick + delay, { request, nodeId: next });
       }
     }
+
+    // Sampled once a second: the live HUD and the node danger-tinting during
+    // playback both read this instead of recomputing anything from scratch.
+    if (tick % (ticksPerSecond * METRICS_SNAPSHOT_SECONDS) === 0) {
+      const offeredSoFar = completed + dropped;
+      history.push({
+        second: tick / ticksPerSecond,
+        p50LatencyMs: Math.round(latencies.percentile(0.5)),
+        p99LatencyMs: Math.round(latencies.percentile(0.99)),
+        throughputRps: completed / Math.max(dt, tick / ticksPerSecond),
+        errorRate: offeredSoFar > 0 ? dropped / offeredSoFar : 0,
+      });
+      for (const state of states.values()) {
+        queueDepthHistory[state.node.id]!.push(state.queue.length);
+      }
+    }
   }
 
   // Anything still queued or in transit when time runs out never answered.
   for (const state of states.values()) {
-    for (let i = 0; i < state.queue.length; i++) drop(state, 'timeout');
+    for (const request of state.queue) drop(state, request, lastTick, 'timeout');
     state.queue.length = 0;
   }
   for (const bucket of arrivals.values()) {
     for (const item of bucket) {
       if (item.nodeId === null) continue;
-      drop(states.get(item.nodeId)!, 'timeout');
+      drop(states.get(item.nodeId)!, item.request, lastTick, 'timeout');
     }
   }
 
@@ -209,6 +336,11 @@ export function runSimulation(
     completed,
     dropped,
     issues,
+    trace: [...traces.values()],
+    history,
+    queueDepthHistory,
+    offeredDurationSeconds: durationSeconds,
+    lastTick,
   };
 }
 
@@ -240,12 +372,13 @@ function buildStates(topology: Topology): Map<string, NodeState> {
   for (const node of topology.nodes) {
     const spec = specFor(node.kind);
     const capacity = spec.capacityRps * node.replicas;
+    const maxQueue = Number.isFinite(capacity)
+      ? Math.max(1, Math.ceil(capacity * MAX_QUEUE_SECONDS))
+      : Number.MAX_SAFE_INTEGER;
     states.set(node.id, {
       node,
       queue: [],
-      maxQueue: Number.isFinite(capacity)
-        ? Math.max(1, Math.ceil(capacity * MAX_QUEUE_SECONDS))
-        : Number.MAX_SAFE_INTEGER,
+      maxQueue,
       capacityPerTick: (capacity * TICK_MS) / 1000,
       budget: 0,
       targets: topology.links.filter((l) => l.from === node.id).map((l) => l.to),
@@ -256,6 +389,7 @@ function buildStates(topology: Topology): Map<string, NodeState> {
         dropped: 0,
         dropsByReason: { queue_full: 0, timeout: 0 },
         peakQueueDepth: 0,
+        maxQueue,
         utilization: 0,
       },
     });
@@ -271,6 +405,7 @@ function profileDuration(level: Level): number {
 function refused(
   issues: ReturnType<typeof validateTopology>,
   topology: Topology,
+  durationSeconds: number,
 ): RunResult {
   return {
     metrics: {
@@ -284,5 +419,10 @@ function refused(
     completed: 0,
     dropped: 0,
     issues,
+    trace: [],
+    history: [],
+    queueDepthHistory: {},
+    offeredDurationSeconds: durationSeconds,
+    lastTick: 0,
   };
 }

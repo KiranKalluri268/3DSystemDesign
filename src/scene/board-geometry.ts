@@ -51,3 +51,22 @@ export function attachPoint(cell: Cell): [number, number, number] {
   const [x, , z] = cellToWorld(cell);
   return [x, UNIT_HEIGHT / 2, z];
 }
+
+/**
+ * The altitude animated packets fly at — comfortably above stackTop(8), the
+ * tallest a stack can ever be, with margin.
+ *
+ * A wire can attach at box-centre height and stay legible: only its
+ * endpoint touches that point, and the rest of the line is in open space.
+ * A stationary packet sitting at that same point has no such luck — it is
+ * a small sphere entirely inside a large opaque box, hidden regardless of
+ * camera angle. Packets fly above every stack instead, at a fixed height,
+ * so a queue piling up reads as packets hovering over the node, not as
+ * nothing visible at all.
+ */
+export const PACKET_HEIGHT = stackTop(8) + 0.6;
+
+export function packetHoverPoint(cell: Cell): [number, number, number] {
+  const [x, , z] = cellToWorld(cell);
+  return [x, PACKET_HEIGHT, z];
+}

@@ -15,3 +15,17 @@ export const MAX_QUEUE_SECONDS = 2;
 
 /** A request that has been alive this long is given up on and counted as an error. */
 export const REQUEST_TIMEOUT_MS = 5_000;
+
+/**
+ * How many requests per run get a full path recorded for animation.
+ *
+ * Run mode animates packets moving through the topology, but a run can offer
+ * thousands of requests per second — rendering all of them would be both
+ * pointless to watch and slow. A bounded, evenly-spread sample is enough to
+ * show the shape of what happened; the metrics themselves are still computed
+ * from every request, not just the traced ones.
+ */
+export const MAX_TRACED_PACKETS = 60;
+
+/** How often a snapshot of running metrics and queue depths is recorded. */
+export const METRICS_SNAPSHOT_SECONDS = 1;

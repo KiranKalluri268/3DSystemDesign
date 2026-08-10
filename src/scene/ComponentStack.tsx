@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Html } from '@react-three/drei';
 import { COMPONENT_COLORS, LINK_PICK_COLOR, SELECTED_COLOR } from './component-colors';
+import { dangerTint } from './dangerColor';
 import { UNIT_HEIGHT, cellToWorld, stackHeight, stackTop } from './board-geometry';
 import { specFor } from '../sim/specs';
 import type { PlacedNode } from '../sim/types';
@@ -13,6 +14,8 @@ interface Props {
   dragging: boolean;
   /** True while this node is the picked source of a connection being drawn. */
   linkSource: boolean;
+  /** Current queue depth over capacity, 0..1, while a run is playing back. */
+  dangerFraction?: number;
   onPointerDown: (event: { stopPropagation: () => void }) => void;
 }
 
@@ -23,10 +26,17 @@ interface Props {
  * this" without reading a number, which is the job the vertical axis is here
  * to do.
  */
-export function ComponentStack({ node, selected, dragging, linkSource, onPointerDown }: Props) {
+export function ComponentStack({
+  node,
+  selected,
+  dragging,
+  linkSource,
+  dangerFraction,
+  onPointerDown,
+}: Props) {
   const [x, , z] = cellToWorld(node.cell);
   const spec = specFor(node.kind);
-  const color = COMPONENT_COLORS[node.kind];
+  const color = dangerTint(COMPONENT_COLORS[node.kind], dangerFraction ?? 0);
   const instances = useMemo(
     () => Array.from({ length: node.replicas }, (_, i) => stackHeight(i)),
     [node.replicas],
