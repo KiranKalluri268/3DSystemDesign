@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   UNIT_GAP,
   UNIT_HEIGHT,
+  attachPoint,
   cellToWorld,
   stackHeight,
   stackTop,
@@ -73,5 +74,21 @@ describe('stacking', () => {
         stackHeight(replicas - 1) + UNIT_HEIGHT / 2,
       );
     }
+  });
+});
+
+describe('attachPoint', () => {
+  it('sits at the same height regardless of replica count', () => {
+    // A wire must read as a flat cable; it does not know how tall the stack
+    // it is attached to will grow, and must not need to.
+    const [, y] = attachPoint({ x: 3, z: 3, y: 0 });
+    expect(y).toBeCloseTo(UNIT_HEIGHT / 2);
+  });
+
+  it('is centred over the node\'s cell', () => {
+    const [x, , z] = attachPoint({ x: 5, z: 7, y: 0 });
+    const [cx, , cz] = cellToWorld({ x: 5, z: 7, y: 0 });
+    expect(x).toBe(cx);
+    expect(z).toBe(cz);
   });
 });

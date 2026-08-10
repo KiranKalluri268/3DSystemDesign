@@ -39,3 +39,15 @@ export function stackHeight(index: number): number {
 export function stackTop(replicas: number): number {
   return replicas * UNIT_HEIGHT + (replicas - 1) * UNIT_GAP;
 }
+
+/**
+ * Where a wire attaches to a node, regardless of how tall its stack is.
+ *
+ * Fixed at one instance's centre height rather than the top of the stack, so
+ * every wire on the board runs at the same height and reads as a flat layer
+ * of cabling instead of zig-zagging up and down as replica counts change.
+ */
+export function attachPoint(cell: Cell): [number, number, number] {
+  const [x, , z] = cellToWorld(cell);
+  return [x, UNIT_HEIGHT / 2, z];
+}

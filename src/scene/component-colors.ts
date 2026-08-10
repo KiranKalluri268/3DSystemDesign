@@ -30,3 +30,11 @@ export const COMPONENT_COLORS: Record<NodeKind, string> = {
 
 export const SELECTED_COLOR = '#ffffff';
 export const INVALID_COLOR = '#ef4444';
+
+/** Ring around a node picked as the source of a connection being drawn. */
+export const LINK_PICK_COLOR = '#38bdf8';
+/** A committed wire, and a wire selected for removal. */
+export const LINK_COLOR = '#5b6b81';
+export const LINK_SELECTED_COLOR = '#ffffff';
+/** The in-progress wire following the cursor before its target is chosen. */
+export const LINK_PREVIEW_VALID_COLOR = '#4ade80';
